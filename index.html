@@ -3,21 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Simple 3.js FPS Prototype</title>
+  <title>Three.js Movement Demo</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; }
-    canvas { display: block; }
   </style>
 </head>
 <body>
-  <div id="info">Click to play, WASD to move, mouse to look, Left-click to shoot</div>
+  <div id="info">Click to play, WASD/Arrow keys to move, mouse to look</div>
   <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/examples/js/controls/PointerLockControls.js"></script>
   <script>
     let camera, scene, renderer, controls;
-    const objects = [];
-    const bullets = [];
+    let moveForward = false;
+    let moveBackward = false;
+    let moveLeft = false;
+    let moveRight = false;
+    const velocity = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+    const clock = new THREE.Clock();
 
     init();
     animate();
@@ -28,39 +32,26 @@
 
       camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
 
-      const light = new THREE.DirectionalLight(0xffffff, 0.5);
-      light.position.set(1, 1, 1).normalize();
-      scene.add(light);
-
-      const ambient = new THREE.AmbientLight(0xffffff, 0.3);
-      scene.add(ambient);
-
-      controls = new THREE.PointerLockControls(camera, document.body);
-      document.body.addEventListener('click', () => controls.lock());
-      scene.add(controls.getObject());
-
-      const floorGeometry = new THREE.PlaneGeometry(200, 200, 10, 10);
-      const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
-      const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-      floor.rotation.x = -Math.PI / 2;
-      scene.add(floor);
-
-      // Add some boxes as targets
-      const boxGeometry = new THREE.BoxGeometry(2, 2, 2);
-      const boxMaterial = new THREE.MeshStandardMaterial({ color: 0xff4444 });
-      for (let i = 0; i < 10; i++) {
-        const box = new THREE.Mesh(boxGeometry, boxMaterial);
-        box.position.set(Math.random() * 50 - 25, 1, Math.random() * 50 - 25);
-        scene.add(box);
-        objects.push(box);
-      }
-
       renderer = new THREE.WebGLRenderer();
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
 
+      const light = new THREE.HemisphereLight(0xffffff, 0x444444);
+      light.position.set(0, 200, 0);
+      scene.add(light);
+
+      const floorGeometry = new THREE.PlaneGeometry(200, 200, 10, 10);
+      const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, wireframe: true });
+      const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      floor.rotation.x = -Math.PI / 2;
+      scene.add(floor);
+
+      controls = new THREE.PointerLockControls(camera, document.body);
+      document.body.addEventListener('click', () => controls.lock());
+
+      document.addEventListener('keydown', onKeyDown);
+      document.addEventListener('keyup', onKeyUp);
       window.addEventListener('resize', onWindowResize);
-      window.addEventListener('click', onShoot);
     }
 
     function onWindowResize() {
@@ -69,47 +60,66 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    function onShoot(event) {
-      if (!controls.isLocked) return;
-      const bulletGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-      const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-      const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
-      const dir = new THREE.Vector3();
-      camera.getWorldDirection(dir);
-      bullet.position.copy(camera.position);
-      bullet.userData = { velocity: dir.clone().multiplyScalar(2) };
-      scene.add(bullet);
-      bullets.push(bullet);
+    function onKeyDown(event) {
+      switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          moveForward = true;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          moveLeft = true;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          moveBackward = true;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          moveRight = true;
+          break;
+      }
+    }
+
+    function onKeyUp(event) {
+      switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          moveForward = false;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          moveLeft = false;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          moveBackward = false;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          moveRight = false;
+          break;
+      }
     }
 
     function animate() {
       requestAnimationFrame(animate);
-      updateBullets();
-      renderer.render(scene, camera);
-    }
 
-    function updateBullets() {
-      for (let i = bullets.length - 1; i >= 0; i--) {
-        const b = bullets[i];
-        b.position.add(b.userData.velocity);
-        // Remove bullet if out of range
-        if (b.position.length() > 100) {
-          scene.remove(b);
-          bullets.splice(i, 1);
-          continue;
-        }
-        // Check for collision with boxes
-        for (let j = objects.length - 1; j >= 0; j--) {
-          const box = objects[j];
-          if (b.position.distanceTo(box.position) < 1) {
-            scene.remove(box);
-            objects.splice(j, 1);
-            scene.remove(b);
-            bullets.splice(i, 1);
-            break;
-          }
-        }
-      }
+      const delta = clock.getDelta();
+      velocity.x -= velocity.x * 10.0 * delta;
+      velocity.z -= velocity.z * 10.0 * delta;
+
+      direction.z = Number(moveForward) - Number(moveBackward);
+      direction.x = Number(moveRight) - Number(moveLeft);
+      direction.normalize();
+
+      if (moveForward || moveBackward) velocity.z -= direction.z * 50.0 * delta;
+      if (moveLeft || moveRight) velocity.x -= direction.x * 50.0 * delta;
+
+      controls.moveRight(-velocity.x * delta);
+      controls.moveForward(-velocity.z * delta);
+
+      renderer.render(scene, camera);
     }
   </script>
 </body>
